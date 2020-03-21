@@ -9,14 +9,14 @@ readme = open('README.md', 'r').read()
 
 
 setup(
-    name='redshift-unloader',
+    name='redshift-unloader2',
     version=redshift_unloader.__version__,
     description='Unload utility for Amazon Redshift',
     long_description=readme,
     long_description_content_type='text/markdown',
-    author='Chaerim Yeo',
-    author_email='yeochaerim@gmail.com',
-    url='https://github.com/cryeo/redshift-unloader',
+    author='Dan Caspi',
+    author_email='dancaspi86@gmail.com',
+    url='https://github.com/dancaspi/redshift-unloader2',
     license='MIT License',
     packages=find_packages(exclude=('tests', 'docs')),
     install_requires=requirements,
