@@ -41,7 +41,7 @@ class RedshiftUnloader:
 
     def unload(self, query: str, filename: str,
                delimiter: str = ',', add_quotes: bool = True, escape: bool = True,
-               null_string: str = '', with_header: bool = True) -> None:
+               null_string: str = '', with_header: bool = True, write_local=True, remove_from_s3=True) -> None:
         session_id = self.__generate_session_id()
         logger.debug("Session id: %s", session_id)
 
@@ -62,34 +62,38 @@ class RedshiftUnloader:
             add_quotes=add_quotes,
             escape=escape,
             allow_overwrite=True)
+        
+        if write_local:
+            logger.debug("Fetch the list of objects")
+            s3_keys = self.__s3.list(s3_path.lstrip('/'))
+            local_files = list(map(lambda key: os.path.join(local_path, os.path.basename(key)), s3_keys))
 
-        logger.debug("Fetch the list of objects")
-        s3_keys = self.__s3.list(s3_path.lstrip('/'))
-        local_files = list(map(lambda key: os.path.join(local_path, os.path.basename(key)), s3_keys))
+            logger.debug("Create temporary directory: %s", local_path)
+            os.mkdir(local_path, 0o700)
 
-        logger.debug("Create temporary directory: %s", local_path)
-        os.mkdir(local_path, 0o700)
+            logger.debug("Download all objects")
+            for s3_key, local_file in zip(s3_keys, local_files):
+                self.__s3.download(key=s3_key, filename=local_file)
 
-        logger.debug("Download all objects")
-        for s3_key, local_file in zip(s3_keys, local_files):
-            self.__s3.download(key=s3_key, filename=local_file)
+            logger.debug("Merge all objects")
+            with open(filename, 'wb') as out:
+                if columns is not None:
+                    out.write(gzip.compress((delimiter.join(columns) + os.linesep).encode()))
 
-        logger.debug("Merge all objects")
-        with open(filename, 'wb') as out:
-            if columns is not None:
-                out.write(gzip.compress((delimiter.join(columns) + os.linesep).encode()))
+                for local_file in local_files:
+                    logger.debug("Merge %s into result file", local_file)
 
-            for local_file in local_files:
-                logger.debug("Merge %s into result file", local_file)
+                    with open(local_file, 'rb') as read:
+                        shutil.copyfileobj(read, out, 2 * MB)
+        
+        if remove_from_s3:
+            logger.debug("Remove all objects in S3")
+            self.__s3.delete(s3_keys)
 
-                with open(local_file, 'rb') as read:
-                    shutil.copyfileobj(read, out, 2 * MB)
 
-        logger.debug("Remove all objects in S3")
-        self.__s3.delete(s3_keys)
-
-        logger.debug("Remove temporary directory in local")
-        shutil.rmtree(local_path)
+        if write_local:
+            logger.debug("Remove temporary directory in local")
+            shutil.rmtree(local_path)
 
     @staticmethod
     def __generate_session_id() -> str:
